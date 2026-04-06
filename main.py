@@ -69,15 +69,63 @@ def analyze_image(image_path:Path, model:str)->dict:
         options={"temperature":0.2} #Low temp for deterministic naming
     )
 
+    cleaned = str()    
     raw = response.message.content
     if isinstance(raw,str):
         raw.strip()
+        print(f"--- Model response ---\n{raw}\n----------------------")
         cleaned = re.sub(r"```(?:json)?\s*", "", raw)
-    print(f"--- Model response ---\n{raw}\n----------------------")
+        cleaned = cleaned.strip().rstrip("`")
+    else:
+        print(f"Unable to process the response received from the ollama client.")
+    
+    # Pass 2: Ask a text-only call to generate a filename from the summary
+    name_response = ollama.chat(
+        model=model,
+        messages=[
+            {
+                "role": "user",
+                "content": (
+                    f"Given this document description:\n\n\"{cleaned}\"\n\n"
+                    "Generate a short, descriptive filename using underscores. "
+                    "No file extension. No explanation. Just the filename.\n\n"
+                    "Examples:\n"
+                    "- Amazon_Invoice_March_2026\n"
+                    "- John_Doe_Passport\n"
+                    "- Meeting_Notes_Project_Alpha\n\n"
+                    "Filename:"
+                ),
+            },
+        ],
+        options={"temperature": 0.1},
+    )
 
-    #Try to parse JSON -- handle markdown fences if present
-    cleaned = re.sub(r"```(?:json)?\s*", "", raw)
+    filename = name_response.message.content
+    if isinstance(filename,str):
+        filename = filename.strip()
+        # Clean up any quotes or extra text the model might add
+        filename = filename.strip('"\'').split("\n")[0].strip()
 
-# my_img = Path("/home/arjun/Work/MyProjects/OcrProject/PaymentMade.jpg")
-# res = encode_image(my_img)
-# print(res)
+    print(f"--- Filename ---\n{filename}\n----------------")
+
+    return {"summary": cleaned, "filename": filename}
+
+def sanitize_filename(name:str, max_len: int = 60)->str:
+    """Ensure the model-suggested filename is filesystem-safe"""
+    # Strip any extension the model might have added.
+    name = re.sub(r"\.(pdf|png|jpg|jpeg)$", "", name, flags=re.IGNORECASE)
+    # Keep only safe characters
+    safe = re.sub(r"[^a-zA-Z0-9_\-]", "_", name)
+    # Collapse multiple underscores
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    # Truncate
+    safe = safe[:max_len].rstrip("_")
+    return safe if safe else "Untitled_Document"
+
+
+
+
+my_img = Path("/home/arjun/Work/MyProjects/OcrProject/20251001_200720.jpg")
+res = analyze_image(my_img,"gemma4:e4b")
+print(res["filename"])
+print(sanitize_filename(res["filename"]))

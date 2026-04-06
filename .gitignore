@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
-PaymentMade.jpgo
+PaymentMade.jpg
+20251001_200720.jpg
 # Virtual environments
 .venv
