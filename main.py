@@ -122,10 +122,73 @@ def sanitize_filename(name:str, max_len: int = 60)->str:
     safe = safe[:max_len].rstrip("_")
     return safe if safe else "Untitled_Document"
 
+def convert_image_to_pdf(
+        image_path: Path, model: str, max_filename_len: int = 60
+)->Path:
+    """
+    Open an image, analyze it with a vision model, and save as a context-aware named PDF
+    """
+    print(f"Analyzing image with model '{model}'...")
+
+    #Step 1: Vision model analyzes the image
+    analysis = analyze_image(image_path, model)
+    summary = analysis.get("summary", "")
+    suggested_name = analysis.get("filename", "Untitled_Document")
+
+    print(f"Summary : {summary}")
+    print(f"Filename: {suggested_name}")
+
+    #Step 2: Sanitize the suggested filename
+    safe_name = sanitize_filename(suggested_name, max_len=max_filename_len)
+    output_path = image_path.parent / f"{safe_name}.pdf"
+
+    # Avoid overwriting
+    counter = 1
+    original  = output_path
+    while output_path.exists():
+        output_path = original.with_stem(f"{original.stem}_{counter}")
+        counter+=1
+
+    # Step 3: Save image as PDF
+    img = Image.open(image_path)
+    if img.mode != "RGB":
+        img = img.convert("RGB")
+    img.save(output_path, "PDF", resolution = 150.0)
+
+    print(f"PDF saved -> {output_path}")
+    return output_path
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description = "Convert image to a context-aware named PDF using a vision model."
+    )
+    parser.add_argument("image", type=Path, help="Path to the input image")
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="glm-ocr:latest",
+        help="Ollama vision model to use (default:glm-ocr:latest)"
+        "Options: glm-ocr:latest, llama3.2-vision:latest, gemma4:e4b"
+    )
+    parser.add_argument(
+        "--max-len",
+        type=int,
+        default=60,
+        help="Max characters for the generated filename (default: 60)",
+    )
+    args = parser.parse_args()
 
-my_img = Path("/home/arjun/Work/MyProjects/OcrProject/20251001_200720.jpg")
-res = analyze_image(my_img,"gemma4:e4b")
-print(res["filename"])
-print(sanitize_filename(res["filename"]))
+    if not args.image.exists():
+        print(f"Error: file not found -> {args.image}", file=sys.stderr)
+        sys.exit(1)
+    convert_image_to_pdf(args.image, model=args.model, max_filename_len=args.max_len)
+
+if __name__ == "__main__":
+    main()
+
+
+# my_img = Path("/home/arjun/Work/MyProjects/OcrProject/20251001_200720.jpg")
+# res = analyze_image(my_img,"gemma4:e4b")
+# print(res["filename"])
+# print(sanitize_filename(res["filename"]))
